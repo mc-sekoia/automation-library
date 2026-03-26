@@ -135,8 +135,8 @@ class SaviyntEventsConnector(Connector):
                         message=f"Sending a batch of {len(result)} messages from {analytic}",
                         level="info",
                     )
-                try:
-                    self.push_events_to_intakes(result)
+                batch_of_events = [orjson.dumps(event).decode("utf-8") for event in result]
+                self.push_events_to_intakes(events=batch_of_events)
             else:
                 self.log(
                     message=f"No {analytic} events to forward",
