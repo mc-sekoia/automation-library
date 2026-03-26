@@ -1,8 +1,6 @@
-import collections
 import time
+from typing import Any
 from datetime import datetime, timedelta
-from typing import Any, Generator, Sequence, Tuple
-
 import orjson
 from sekoia_automation.connector import Connector
 
@@ -63,6 +61,7 @@ class SaviyntEventsConnector(Connector):
                 }
                 response = self.client.post(url=f"{self.module.configuration.base_url}/ECM/api/v5/fetchRuntimeControlsData",json=payload_json, timeout=60)
                 if response.ok:
+                    print(f"FETCHING {analytic}, offset {offset} successful")
                     total: int = int(response.json()["total"])
                     displaycount: int = int(response.json()["displaycount"])
                     if (displaycount < total):
@@ -149,7 +148,7 @@ class SaviyntEventsConnector(Connector):
         Get last event date and id.
 
         Returns:
-            Tuple[datetime, str | None]:
+            str:
         """
         with self.context as cache:
             event_type_context = cache.get(analytic)
