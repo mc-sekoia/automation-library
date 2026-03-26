@@ -16,7 +16,7 @@ import requests
 from dateutil import parser
 from dateutil.parser import ParserError, isoparse
 from sekoia_automation.storage import PersistentJSON
-
+import re
 from . import SaviyntModule
 from .client import ApiClient
 from .models import SaviyntConnectorConfiguration
@@ -122,11 +122,11 @@ class SaviyntEventsConnector(Connector):
                             break
                 last_event_id = result[-1].get("ID")
                 self.update_event_analytic_context(last_event_id, analytic)
+                batch_of_events = [orjson.dumps(event).decode("utf-8") for event in result]
                 self.log(
                         message=f"Sending a batch of {len(result)} messages from {analytic}",
                         level="info",
                     )
-                batch_of_events = [orjson.dumps(event).decode("utf-8") for event in result]
                 self.push_events_to_intakes(events=batch_of_events)
             else:
                 self.log(
