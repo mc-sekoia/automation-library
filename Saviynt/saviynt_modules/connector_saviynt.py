@@ -206,6 +206,13 @@ class SaviyntEventsConnector(Connector):
                     ),
                     level="info",
                 )
+        with self.context as cache:
+            self.log(
+                    message=(
+                        f"DEBUG : {cache.get(analytic)} for analytic : {analytic}"
+                    ),
+                    level="info",
+                )
 
     
     def handle_api_exception(self, error: APIException) -> None:
