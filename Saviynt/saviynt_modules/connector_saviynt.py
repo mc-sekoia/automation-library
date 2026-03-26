@@ -126,7 +126,7 @@ class SaviyntEventsConnector(Connector):
                             break
                 last_event_id = result[-1].get("ID")
                 self.update_event_analytic_context(analytic, last_event_id)
-                self.publish_events_to_intake(result)
+                self.push_events_to_intakes(result)
                 self.log(
                         message=f"Sent a batch of {len(result)} {analytic} messages",
                         level="info",
