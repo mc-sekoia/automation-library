@@ -8,7 +8,6 @@ from typing import Any, Generator, Sequence, Tuple
 import orjson
 from sekoia_automation.connector import Connector
 
-from .saviynt_utils import SaviyntUtils
 from .metrics import EVENTS_LAG, FORWARD_EVENTS_DURATION, INCOMING_MESSAGES, OUTCOMING_EVENTS
 from .models import SaviyntConnectorConfiguration
 
@@ -21,6 +20,12 @@ from . import SaviyntModule
 from .client import ApiClient
 from .models import SaviyntConnectorConfiguration
 
+class APIException(Exception):
+
+    def __init__(self, code: int, reason: str, content: str):
+        super().__init__(reason)
+        self.code = code
+        self.content = content
 
 class SaviyntEventsConnector(Connector):
     configuration: SaviyntConnectorConfiguration
@@ -100,8 +105,7 @@ class SaviyntEventsConnector(Connector):
                         level = "critical" if response.status_code in [403] else "error"
                         self.log(
                             message=(
-                                f"Request on Saviynt API to fetch events 
-                                failed with status {response.status_code} - {response.reason}"
+                                f"Request on Saviynt API to fetch events failed with status {response.status_code} - {response.reason}"
                             ),
                             level=level,
                         )
