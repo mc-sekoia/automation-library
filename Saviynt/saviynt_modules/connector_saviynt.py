@@ -90,7 +90,12 @@ class SaviyntEventsConnector(Connector):
                 if response.ok:
                     print(f"FETCHING {analytic}, offset {offset} successful")
                     total: int = int(response.json()["total"])
-                    print(f"TOTAL : {total}")
+                    self.log(
+                    message=(
+                        f"Found {total} messages for analytic : {analytic}"
+                    ),
+                    level="info",
+                )
                     #Empty result handler
                     if total == 0 or not("result" in response.json()):
                         events_to_fetch = False
@@ -130,7 +135,8 @@ class SaviyntEventsConnector(Connector):
                         message=f"Sending a batch of {len(result)} messages from {analytic}",
                         level="info",
                     )
-                self.push_events_to_intakes(result)
+                try:
+                    self.push_events_to_intakes(result)
             else:
                 self.log(
                     message=f"No {analytic} events to forward",
@@ -175,6 +181,12 @@ class SaviyntEventsConnector(Connector):
             if not event_type_context:
                 event_type_context = {}
             last_event_id = event_type_context.get("last_event_id")
+            self.log(
+                    message=(
+                        f"Found saved last event : {last_event_id} for analytic : {analytic}"
+                    ),
+                    level="info",
+                )
             return last_event_id
 
     def update_event_analytic_context(
