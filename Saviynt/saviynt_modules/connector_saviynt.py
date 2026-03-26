@@ -73,7 +73,7 @@ class SaviyntEventsConnector(Connector):
             else:
                 timeframe = self.frequency
             self.log(
-                message=f"Fetching recent {analytic} messages since {last_event_date}",
+                message=f"Fetching recent {analytic} messages for the last {timeframe} minutes",
                 level="info",
             )
             offset = 0
@@ -126,11 +126,11 @@ class SaviyntEventsConnector(Connector):
                             break
                 last_event_id = result[-1].get("ID")
                 self.update_event_analytic_context(analytic, last_event_id)
-                self.push_events_to_intakes(result)
                 self.log(
-                        message=f"Sent a batch of {len(result)} {analytic} messages",
+                        message=f"Sending a batch of {len(result)} messages from {analytic}",
                         level="info",
                     )
+                self.push_events_to_intakes(result)
             else:
                 self.log(
                     message=f"No {analytic} events to forward",
