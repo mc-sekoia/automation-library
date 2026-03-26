@@ -61,7 +61,7 @@ class SaviyntEventsConnector(Connector):
                 timeframe = self.frequency
             self.log(
                 message=f"Fetching recent {analytic} messages since {last_event_date}",
-                level="debug",
+                level="info",
             )
             offset = 0
             events_to_fetch = True
@@ -129,7 +129,7 @@ class SaviyntEventsConnector(Connector):
                     message=f"Sleeping until next batch in {self.frequency}",
                     level="info",
                 )
-                
+
     def create_client(self) -> ApiClient:
         try:
             return ApiClient(
@@ -198,10 +198,13 @@ class SaviyntEventsConnector(Connector):
 
     def run(self) -> None:  # pragma: no cover
         """Run the trigger."""
+        self.log(level="info", message="Starting Connector")
+        self.log(level="info", message="Authentication to saviynt")
         self.client = self.create_client()
-
+        
         while self.running:
             try:
+                self.log(level="info", message="Fetching events")
                 self._fetch_events()
             except APIException as ex:
                 self.handle_api_exception(ex)
