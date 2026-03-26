@@ -139,8 +139,8 @@ class SaviyntEventsConnector(Connector):
         try:
             return ApiClient(
                 auth_url=self.module.configuration.base_url + '/ECM/api/login',
-                client_id=self.module.configuration.client_id,
-                client_secret=self.module.configuration.client_secret,
+                client_id=self.module.configuration.username,
+                client_secret=self.module.configuration.password,
             )
 
         except requests.exceptions.HTTPError as error:
