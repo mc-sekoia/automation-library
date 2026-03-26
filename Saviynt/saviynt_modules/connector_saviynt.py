@@ -47,15 +47,21 @@ class SaviyntEventsConnector(Connector):
         all_events: list[dict[str, Any]] = []
         for analytic in self.analytics:
             #Get cached last event fetched
+            last_event_date: str = None
             last_event: str = self.get_event_analytic_context(analytic)
+            
             if last_event:
+                self.log(
+                    message=f"Found last event {last_event}",
+                    level="info",
+                )
                 #Handling two id formats : id_date and date_id
                 if re.match("[0-9]+_[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}",last_event):
-                    last_event_id: str = last_event.split("_")[0]
-                    last_event_date: str = last_event.split("_")[1]
+                    last_event_id = last_event.split("_")[0]
+                    last_event_date = last_event.split("_")[1]
                 else:
-                    last_event_date: str = last_event.split("_")[0]
-                    last_event_id: str = last_event.split("_")[1]
+                    last_event_date = last_event.split("_")[0]
+                    last_event_id = last_event.split("_")[1]
                 #Elapsed time since last event fetch
                 timedelta_minutes = int((datetime.utcnow() - datetime.strptime(last_event_date,"%Y-%m-%d %H:%M:%S")).seconds / 60) +1
                 #Adapt the timeframe if the connector has been launched earlier than its frequency
@@ -129,7 +135,7 @@ class SaviyntEventsConnector(Connector):
                     message=f"No {analytic} events to forward",
                     level="info",
                 )
-        time.sleep(self.frequency)
+        time.sleep(self.frequency * 60)
         self.log(
                     message=f"Sleeping until next batch in {self.frequency}",
                     level="info",
@@ -168,7 +174,6 @@ class SaviyntEventsConnector(Connector):
             if not event_type_context:
                 event_type_context = {}
             last_event_id = event_type_context.get("last_event_id")
-
             return last_event_id
 
     def update_event_analytic_context(
