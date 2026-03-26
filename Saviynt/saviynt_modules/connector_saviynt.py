@@ -192,7 +192,7 @@ class SaviyntEventsConnector(Connector):
                     message=(
                         f"Saved last event : {last_event_id} for analytic : {analytic}"
                     ),
-                    level=level,
+                    level="info",
                 )
 
     
