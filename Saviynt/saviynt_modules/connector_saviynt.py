@@ -137,7 +137,11 @@ class SaviyntEventsConnector(Connector):
                     message=f"Sleeping until next batch in {self.configuration.frequency} minutes",
                     level="info",
                 )
-        time.sleep(self.configuration.frequency * 60)
+        try:
+            time.sleep(self.configuration.frequency * 60)
+        except KeyboardInterrupt:
+            pass
+
         
 
     def create_client(self) -> ApiClient:
@@ -191,6 +195,12 @@ class SaviyntEventsConnector(Connector):
             analytic: str
         """
         with self.context as cache:
+            self.log(
+                    message=(
+                        f"DEBUG : {cache}"
+                    ),
+                    level="info",
+                )
             cache[analytic] = {"last_event_id": last_event_id}
             self.log(
                     message=(
@@ -217,7 +227,8 @@ class SaviyntEventsConnector(Connector):
             )
         self.log(level="error", message=message)
         self.log(level="info", message="Waiting for next poll in {self.configuration.frequency} minutes")
-        time.sleep(self.configuration.frequency*60)
+        #Timer to prevent spamming
+        time.sleep(60)
 
     def run(self) -> None:  # pragma: no cover
         """Run the trigger."""
