@@ -1,0 +1,38 @@
+{
+  "configuration": {
+    "title": "Saviynt",
+    "type": "object",
+    "properties": {
+      "base_url": {
+        "description": "Base Url of the Saviynt platform",
+        "Title": "Base Url",
+        "type": "string",
+        "format": "uri"
+      },
+      "username": {
+        "description": "Username used for API Access",
+        "type": "string"
+      },
+      "password": {
+        "description": "Password used for API Access",
+        "type": "string"
+      }
+    },
+    "required": [
+      "base_url",
+      "username",
+      "password"
+    ],
+    "secrets": [
+      "password"
+    ]
+  },
+  "description": "Saviynt is a leading platform for identity governance and administration (IGA), privileged access management (PAM), and cloud security",
+  "name": "Saviynt",
+  "uuid": "7882e19d-3ff3-46fe-bfda-3425d8e956eb",
+  "slug": "saviynt",
+  "version": "0.0.1",
+  "categories": [
+    "Iam"
+  ]
+}

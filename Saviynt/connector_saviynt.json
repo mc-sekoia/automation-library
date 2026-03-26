@@ -1,0 +1,44 @@
+{
+  "description": "Get last Saviynt Events",
+  "docker_parameters": "saviynt_events_connector",
+  "name": "Get last Saviynt Events",
+  "arguments": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "properties": {
+      "base_url": {
+        "description": "Url of the Saviynt server (e.g. 'https://saviynt.cloud.domain')",
+        "type": "string"
+      },
+      "frequency": {
+        "type": "integer",
+        "description": "Batch frequency in minutes",
+        "default": 30
+      },
+      "analytics_name": {
+        "type": "array",
+        "description": "List of the analytics reports (e.g. [\"report_name01\",\"repot_name02\"]",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "intake_server": {
+        "description": "Server of the intake server (e.g. 'https://intake.sekoia.io')",
+        "default": "https://intake.sekoia.io",
+        "type": "string"
+      },
+      "intake_key": {
+        "description": "Intake key to use when sending events",
+        "type": "string"
+      }
+    },
+    "required": [
+      "base_url",
+      "analytics_name",
+      "intake_key"
+    ],
+    "title": "Saviynt Events",
+    "type": "object"
+  },
+  "uuid": "2e5bc352-54fb-417a-8747-cd2a2be292b3"
+}
