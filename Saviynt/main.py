@@ -1,6 +1,5 @@
 from saviynt_modules import SaviyntModule
-from saviynt_modules.connector_m365_events import M365EventsConnector
-from saviynt_modules.trigger_m365_events import M365EventsTrigger
+from saviynt_modules.connector_saviynt import SaviyntEventsConnector
 
 if __name__ == "__main__":
     module = SaviyntModule()

@@ -28,6 +28,7 @@ class APIException(Exception):
         self.content = content
 
 class SaviyntEventsConnector(Connector):
+    module: SaviyntModule
     configuration: SaviyntConnectorConfiguration
 
     def __init__(self, *args: Any, **kwargs: dict[str, Any]) -> None:
@@ -36,7 +37,6 @@ class SaviyntEventsConnector(Connector):
         self.context = PersistentJSON("context.json", self._data_path)
         self.analytics: list = list(self.configuration.analytics_name)
         self.limit: int = 500
-        self.base_url: str = str(self.configuration.base_url)
         self.frequency: int = int(self.configuration.frequency)
 
     def _fetch_events(self) -> None:
@@ -79,7 +79,7 @@ class SaviyntEventsConnector(Connector):
                     "max": self.limit,
                     "offset": offset
                 }
-                response = self.client.post(url=f"{self.base_url}/ECM/api/v5/fetchRuntimeControlsData",json=payload_json, timeout=60)
+                response = self.client.post(url=f"{self.module.configuration.base_url}/ECM/api/v5/fetchRuntimeControlsData",json=payload_json, timeout=60)
                 if response.ok:
                     print(f"FETCHING {analytic}, offset {offset} successful")
                     total: int = int(response.json()["total"])
