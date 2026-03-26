@@ -10,6 +10,7 @@ from sekoia_automation.connector import Connector
 
 from .metrics import EVENTS_LAG, FORWARD_EVENTS_DURATION, INCOMING_MESSAGES, OUTCOMING_EVENTS
 from .models import SaviyntConnectorConfiguration
+from requests import HTTPError
 
 import requests
 from dateutil import parser
@@ -20,13 +21,6 @@ from . import SaviyntModule
 from .client import ApiClient
 from .models import SaviyntConnectorConfiguration
 
-class APIException(Exception):
-
-    def __init__(self, code: int, reason: str, content: str):
-        super().__init__(reason)
-        self.code = code
-        self.content = content
-
 class SaviyntEventsConnector(Connector):
     module: SaviyntModule
     configuration: SaviyntConnectorConfiguration
@@ -35,9 +29,7 @@ class SaviyntEventsConnector(Connector):
         super().__init__(*args, **kwargs)
         self.log(level="info", message="Initiating Connector")
         self.context = PersistentJSON("context.json", self._data_path)
-        self.analytics: list = list(self.configuration.analytics_name)
         self.limit: int = 500
-        self.frequency: int = int(self.configuration.frequency)
 
     def _fetch_events(self) -> None:
         """
@@ -45,12 +37,11 @@ class SaviyntEventsConnector(Connector):
         and the current batch is not too big.
         """
         all_events: list[dict[str, Any]] = []
-        for analytic in self.analytics:
+        for analytic in self.configuration.analytics_name:
             #Get cached last event fetched
             last_event_date: str |None = None
             last_event_id: str | None= None
             last_event: str = self.get_event_analytic_context(analytic)
-            
             if last_event:
                 self.log(
                     message=f"Found last event {last_event}",
@@ -66,12 +57,12 @@ class SaviyntEventsConnector(Connector):
                 #Elapsed time since last event fetch
                 timedelta_minutes = int((datetime.utcnow() - datetime.strptime(last_event_date,"%Y-%m-%d %H:%M:%S")).seconds / 60) +1
                 #Adapt the timeframe if the connector has been launched earlier than its frequency
-                if (timedelta_minutes < self.frequency):
+                if (timedelta_minutes < self.configuration.frequency):
                     timeframe = timedelta_minutes
                 else:
-                    timeframe = self.frequency
+                    timeframe = self.configuration.frequency
             else:
-                timeframe = self.frequency
+                timeframe = self.configuration.frequency
             self.log(
                 message=f"Fetching recent {analytic} messages for the last {timeframe} minutes",
                 level="info",
@@ -142,11 +133,12 @@ class SaviyntEventsConnector(Connector):
                     message=f"No {analytic} events to forward",
                     level="info",
                 )
-        time.sleep(self.frequency * 60)
         self.log(
-                    message=f"Sleeping until next batch in {self.frequency}",
+                    message=f"Sleeping until next batch in {self.configuration.frequency} minutes",
                     level="info",
                 )
+        time.sleep(self.configuration.frequency * 60)
+        
 
     def create_client(self) -> ApiClient:
         try:
@@ -215,28 +207,27 @@ class SaviyntEventsConnector(Connector):
                 )
 
     
-    def handle_api_exception(self, error: APIException) -> None:
-        message = f"Unexpected API error {error.code} - {str(error)} - {error.content}"
-        if error.code == 401 or error.code == 403:
+    def handle_api_exception(self, error: HTTPError) -> None:
+        message = f"Unexpected API error {error.response.status_code} - {str(error.response)}"
+        if error.response.status_code == 401 or error.response.status_code == 403:
             message = "Saviynt API raised an authentication issue. Please check our credentials"
-        elif error.code == 500:
+        elif error.response.status_code == 500:
             message = (
                 "Saviynt API raised an internal error"
             )
         self.log(level="error", message=message)
-        time.sleep(self.configuration.frequency)
+        self.log(level="info", message="Waiting for next poll in {self.configuration.frequency} minutes")
+        time.sleep(self.configuration.frequency*60)
 
     def run(self) -> None:  # pragma: no cover
         """Run the trigger."""
-        self.log(level="info", message="Starting Connector")
-        self.log(level="info", message="Authentication to saviynt")
-        self.client = self.create_client()
-        
+        self.log(level="info", message="Starting Connector")        
         while self.running:
             try:
-                self.log(level="info", message="Fetching events")
+                self.log(level="info", message="Authentication to saviynt")
+                self.client = self.create_client()
                 self._fetch_events()
-            except APIException as ex:
+            except HTTPError as ex:
                 self.handle_api_exception(ex)
             except Exception as ex:
                 self.log_exception(ex, message="An unknown exception occurred")
