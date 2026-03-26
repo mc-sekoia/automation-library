@@ -47,7 +47,8 @@ class SaviyntEventsConnector(Connector):
         all_events: list[dict[str, Any]] = []
         for analytic in self.analytics:
             #Get cached last event fetched
-            last_event_date: str = None
+            last_event_date: str |None = None
+            last_event_id: str | None= None
             last_event: str = self.get_event_analytic_context(analytic)
             
             if last_event:
