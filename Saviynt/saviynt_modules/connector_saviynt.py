@@ -43,10 +43,6 @@ class SaviyntEventsConnector(Connector):
             last_event_id: str | None= None
             last_event: str = self.get_event_analytic_context(analytic)
             if last_event:
-                self.log(
-                    message=f"Found last event {last_event}",
-                    level="info",
-                )
                 #Handling two id formats : id_date and date_id
                 if re.match("[0-9]+_[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}",last_event):
                     last_event_id = last_event.split("_")[0]
@@ -57,16 +53,9 @@ class SaviyntEventsConnector(Connector):
                 #Elapsed time since last event fetch
                 timedelta_minutes = int((datetime.utcnow() - datetime.strptime(last_event_date,"%Y-%m-%d %H:%M:%S")).seconds / 60) +1
                 #Adapt the timeframe if the connector has been launched earlier than its frequency
-                if (timedelta_minutes < self.configuration.frequency):
-                    timeframe = timedelta_minutes
-                else:
-                    timeframe = self.configuration.frequency
+                timeframe = timedelta_minutes
             else:
                 timeframe = self.configuration.frequency
-            self.log(
-                message=f"Fetching recent {analytic} messages for the last {timeframe} minutes",
-                level="info",
-            )
             offset = 0
             events_to_fetch = True
             result: list[dict[str, Any]] = []
@@ -81,11 +70,10 @@ class SaviyntEventsConnector(Connector):
                 if response.ok:
                     print(f"FETCHING {analytic}, offset {offset} successful")
                     total: int = int(response.json()["total"])
-                    self.log(
-                    message=(
-                        f"Found {total} messages for analytic : {analytic}"
-                    ),
-                    level="info",
+                    displaycount: int = int(response.json()["displaycount"])
+                    if (displaycount < total):
+                        self.log(message=(f"Max api count reached. {total - displaycount} events have been lost. Consider lowering the frequency parameter"),level="error")
+                    self.log(message=(f"Found {total} messages for analytic : {analytic}"),level="info",
                 )
                     #Empty result handler
                     if total == 0 or not("result" in response.json()):
@@ -130,17 +118,14 @@ class SaviyntEventsConnector(Connector):
                 self.push_events_to_intakes(events=batch_of_events)
             else:
                 self.log(
-                    message=f"No {analytic} events to forward",
+                    message=f"No events to forward for {analytic}",
                     level="info",
                 )
         self.log(
                     message=f"Sleeping until next batch in {self.configuration.frequency} minutes",
                     level="info",
                 )
-        try:
-            time.sleep(self.configuration.frequency * 60)
-        except KeyboardInterrupt:
-            pass
+        time.sleep(self.configuration.frequency * 60)
 
         
 
@@ -195,23 +180,10 @@ class SaviyntEventsConnector(Connector):
             analytic: str
         """
         with self.context as cache:
-            self.log(
-                    message=(
-                        f"DEBUG : {cache}"
-                    ),
-                    level="info",
-                )
             cache[analytic] = {"last_event_id": last_event_id}
             self.log(
                     message=(
                         f"Saved last event : {last_event_id} for analytic : {analytic}"
-                    ),
-                    level="info",
-                )
-        with self.context as cache:
-            self.log(
-                    message=(
-                        f"DEBUG : {cache.get(analytic)} for analytic : {analytic}"
                     ),
                     level="info",
                 )
@@ -242,4 +214,7 @@ class SaviyntEventsConnector(Connector):
                 self.handle_api_exception(ex)
             except Exception as ex:
                 self.log_exception(ex, message="An unknown exception occurred")
+                self.log_exception(ex, message="Retrying in 60 seconds")
+                #Timer to prevent spamming
+                time.sleep(60)
                 raise
