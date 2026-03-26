@@ -121,7 +121,7 @@ class SaviyntEventsConnector(Connector):
                             result = result[i+1:]
                             break
                 last_event_id = result[-1].get("ID")
-                self.update_event_analytic_context(analytic, last_event_id)
+                self.update_event_analytic_context(last_event_id, analytic)
                 self.log(
                         message=f"Sending a batch of {len(result)} messages from {analytic}",
                         level="info",
