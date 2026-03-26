@@ -1,20 +1,15 @@
 import collections
 import time
-from typing import Any, Deque
 from datetime import datetime, timedelta
-from functools import cached_property
 from typing import Any, Generator, Sequence, Tuple
 
 import orjson
 from sekoia_automation.connector import Connector
 
-from .metrics import EVENTS_LAG, FORWARD_EVENTS_DURATION, INCOMING_MESSAGES, OUTCOMING_EVENTS
 from .models import SaviyntConnectorConfiguration
 from requests import HTTPError
 
 import requests
-from dateutil import parser
-from dateutil.parser import ParserError, isoparse
 from sekoia_automation.storage import PersistentJSON
 import re
 from . import SaviyntModule
@@ -68,7 +63,6 @@ class SaviyntEventsConnector(Connector):
                 }
                 response = self.client.post(url=f"{self.module.configuration.base_url}/ECM/api/v5/fetchRuntimeControlsData",json=payload_json, timeout=60)
                 if response.ok:
-                    print(f"FETCHING {analytic}, offset {offset} successful")
                     total: int = int(response.json()["total"])
                     displaycount: int = int(response.json()["displaycount"])
                     if (displaycount < total):
@@ -162,12 +156,6 @@ class SaviyntEventsConnector(Connector):
             if not event_type_context:
                 event_type_context = {}
             last_event_id = event_type_context.get("last_event_id")
-            self.log(
-                    message=(
-                        f"Found saved last event : {last_event_id} for analytic : {analytic}"
-                    ),
-                    level="info",
-                )
             return last_event_id
 
     def update_event_analytic_context(
@@ -181,12 +169,6 @@ class SaviyntEventsConnector(Connector):
         """
         with self.context as cache:
             cache[analytic] = {"last_event_id": last_event_id}
-            self.log(
-                    message=(
-                        f"Saved last event : {last_event_id} for analytic : {analytic}"
-                    ),
-                    level="info",
-                )
 
     
     def handle_api_exception(self, error: HTTPError) -> None:
