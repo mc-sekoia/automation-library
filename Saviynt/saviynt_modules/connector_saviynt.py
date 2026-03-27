@@ -96,7 +96,6 @@ class SaviyntEventsConnector(Connector):
                         return []
             if len(analytic_events) > 0:
                 #Cleaning events by removing duplicates
-                
                 filtered_events = [
                     event for event in analytic_events if event.get("ID") is not None and event["ID"] not in self.events_cache
                 ]
@@ -219,9 +218,9 @@ class SaviyntEventsConnector(Connector):
     def run(self) -> None:  # pragma: no cover
         """Run the trigger."""
         self.log(level="info", message="Starting Connector") 
+        self.client = self.create_client() 
         while self.running:
             try:
-                self.client = self.create_client() 
                 self._fetch_events()
             except HTTPError as ex:
                 self.handle_api_exception(ex)
