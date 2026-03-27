@@ -104,9 +104,9 @@ class SaviyntEventsConnector(Connector):
                 self.update_event_analytic_context(last_event_id, analytic)
 
                 #Formating events for intake sending
-                batch_of_events = [orjson.dumps(event).decode("utf-8") for event in analytic_events]
+                batch_of_events = [orjson.dumps(event).decode("utf-8") for event in filtered_events]
                 self.log(
-                        message=f"Sending a batch of {len(analytic_events)} messages from {analytic}",
+                        message=f"Sending a batch of {len(filtered_events)} messages from {analytic}",
                         level="info",
                     )
                 self.push_events_to_intakes(events=batch_of_events)
@@ -219,9 +219,9 @@ class SaviyntEventsConnector(Connector):
     def run(self) -> None:  # pragma: no cover
         """Run the trigger."""
         self.log(level="info", message="Starting Connector") 
-        self.client = self.create_client() 
         while self.running:
             try:
+                self.client = self.create_client() 
                 self._fetch_events()
             except HTTPError as ex:
                 self.handle_api_exception(ex)
