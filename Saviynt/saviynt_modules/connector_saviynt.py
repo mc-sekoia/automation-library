@@ -36,8 +36,7 @@ class SaviyntEventsConnector(Connector):
             #Get cached last event fetched
             last_event_date: str |None = None
             last_event_id: str | None= None
-            last_event: str = self.get_event_analytic_context(analytic)[0]
-            cached_event_ids: [str] = self.get_event_analytic_context(analytic)[1]
+            last_event: str = self.get_event_analytic_context(analytic)
             if last_event:
                 #Handling two id formats : id_date and date_id
                 if re.match("[0-9]+_[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}",last_event):
