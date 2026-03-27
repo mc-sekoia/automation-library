@@ -13,7 +13,6 @@ class ApiKeyAuthentication(AuthBase):
         self.__client_id = client_id
         self.__client_secret = client_secret
         self.__api_credentials: dict[str, Any] | None = None
-
         self.__http_session = requests.Session()
         self.__http_session.mount(
             "https://",

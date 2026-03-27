@@ -6,7 +6,7 @@ from sekoia_automation.connector import Connector
 
 from .models import SaviyntConnectorConfiguration
 from requests import HTTPError
-
+from cachetools import Cache, LRUCache
 import requests
 from sekoia_automation.storage import PersistentJSON
 import re
@@ -23,18 +23,21 @@ class SaviyntEventsConnector(Connector):
         self.log(level="info", message="Initiating Connector")
         self.context = PersistentJSON("context.json", self._data_path)
         self.limit: int = 500
+        #Cache initiali
+        self.cache_size = 2000
+        self.events_cache: Cache[str, bool] = self.load_events_cache()
 
     def _fetch_events(self) -> None:
         """
         Successively queries the pages while more are available
         and the current batch is not too big.
         """
-        all_events: list[dict[str, Any]] = []
         for analytic in self.configuration.analytics_name:
             #Get cached last event fetched
             last_event_date: str |None = None
             last_event_id: str | None= None
-            last_event: str = self.get_event_analytic_context(analytic)
+            last_event: str = self.get_event_analytic_context(analytic)[0]
+            cached_event_ids: [str] = self.get_event_analytic_context(analytic)[1]
             if last_event:
                 #Handling two id formats : id_date and date_id
                 if re.match("[0-9]+_[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}",last_event):
@@ -44,14 +47,15 @@ class SaviyntEventsConnector(Connector):
                     last_event_date = last_event.split("_")[0]
                     last_event_id = last_event.split("_")[1]
                 #Elapsed time since last event fetch
-                timedelta_minutes = int((datetime.utcnow() - datetime.strptime(last_event_date,"%Y-%m-%d %H:%M:%S")).seconds / 60) +1
-                #Adapt the timeframe if the connector has been launched earlier than its frequency
-                timeframe = timedelta_minutes
+                elapsed_time_minutes = int((datetime.utcnow() - datetime.strptime(last_event_date,"%Y-%m-%d %H:%M:%S")).seconds / 60) +1
+                #Adapt the timeframe if the connector has been launched earlier than its frequency or if no data has been fetched for more than frequency
+                timeframe = elapsed_time_minutes
             else:
+                #Backs to frequency parameter as a default
                 timeframe = self.configuration.frequency
             offset = 0
             events_to_fetch = True
-            result: list[dict[str, Any]] = []
+            analytic_events: list[dict[str, Any]] = []
             while events_to_fetch:
                 payload_json = {
                     "analyticsname": analytic,
@@ -61,19 +65,16 @@ class SaviyntEventsConnector(Connector):
                 }
                 response = self.client.post(url=f"{self.module.configuration.base_url}/ECM/api/v5/fetchRuntimeControlsData",json=payload_json, timeout=60)
                 if response.ok:
-                    print(f"FETCHING {analytic}, offset {offset} successful")
                     total: int = int(response.json()["total"])
                     displaycount: int = int(response.json()["displaycount"])
                     if (displaycount < total):
                         self.log(message=(f"Max api count reached. {total - displaycount} events have been lost. Consider lowering the frequency parameter"),level="error")
-                    self.log(message=(f"Found {total} messages for analytic : {analytic}"),level="info",
-                )
                     #Empty result handler
                     if total == 0 or not("result" in response.json()):
                         events_to_fetch = False
                         break
                     else:
-                        result.extend(response.json()["result"])
+                        analytic_events.extend(response.json()["result"])
                         #Offset pages handling
                         offset+=1
                         if total > offset*self.limit:
@@ -94,21 +95,25 @@ class SaviyntEventsConnector(Connector):
                             level=level,
                         )
                         return []
-            if len(result) > 0:
+            if len(analytic_events) > 0:
                 #Cleaning events by removing duplicates
-                if last_event_id:
-                    for i,event in enumerate(result):
-                        if last_event in event.values():
-                            result = result[i+1:]
-                            break
-                last_event_id = result[-1].get("ID")
+                
+                filtered_events = [
+                    event for event in analytic_events if event.get("ID") is not None and event["ID"] not in self.events_cache
+                ]
+                last_event_id = filtered_events[-1].get("ID")
                 self.update_event_analytic_context(last_event_id, analytic)
-                batch_of_events = [orjson.dumps(event).decode("utf-8") for event in result]
+
+                #Formating events for intake sending
+                batch_of_events = [orjson.dumps(event).decode("utf-8") for event in analytic_events]
                 self.log(
-                        message=f"Sending a batch of {len(result)} messages from {analytic}",
+                        message=f"Sending a batch of {len(analytic_events)} messages from {analytic}",
                         level="info",
                     )
                 self.push_events_to_intakes(events=batch_of_events)
+                #Saving events to cache
+                for event in filtered_events:
+                    self.events_cache[event["ID"]] = True
             else:
                 self.log(
                     message=f"No events to forward for {analytic}",
@@ -120,47 +125,69 @@ class SaviyntEventsConnector(Connector):
                 )
         time.sleep(self.configuration.frequency * 60)
 
-        
-
     def create_client(self) -> ApiClient:
+        """
+        Initiates the APIClient connection.
+
+        Returns:
+            str:
+        """
         try:
+            self.log(level="info", message="API Authentication")
             return ApiClient(
                 auth_url=self.module.configuration.base_url + '/ECM/api/login',
                 client_id=self.module.configuration.username,
                 client_secret=self.module.configuration.password,
             )
 
-        except requests.exceptions.HTTPError as error:
-            response = error.response
-            level = "critical" if response.status_code in [401, 403] else "error"
-            self.log(
-                f"OAuth2 server responded {response.status_code} - {response.reason}",
-                level=level,
-            )
-            raise error
+        except HTTPError as ex:
+                self.handle_api_exception(ex)
 
         except TimeoutError as error:
             self.log(message="Failed to authorize due to timeout", level="error")
             raise error
 
+    def load_events_cache(self) -> Cache[str, bool]:
+        """
+        Load the events cache.
+        """
+        cache: Cache[str, bool] = LRUCache(maxsize=self.cache_size)
+
+        with self.context as context:
+            # load the cache from the context
+            cached_event_ids = context.get("cached_event_ids", [])
+
+        for uuid in cached_event_ids:
+            cache[uuid] = True
+
+        return cache
+    
+    def save_events_cache(self) -> None:
+        """
+        Save the events cache.
+        """
+        with self.context as context:
+            # save the events cache to the context
+            context["cached_event_ids"] = list(self.events_cache.keys())
+
     def get_event_analytic_context(self, analytic: str) -> str:
         """
-        Get last event date and id.
+        Get last event id from persistent storage.
 
         Returns:
             str:
         """
         with self.context as cache:
-            event_type_context = cache.get(analytic)
-            if not event_type_context:
-                event_type_context = {}
-            last_event_id = event_type_context.get("last_event_id")
+            analytic_context = cache.get(analytic)
+            if not analytic_context:
+                analytic_context = {}
+            last_event_id = analytic_context.get("last_event_id")
             return last_event_id
 
     def update_event_analytic_context(
         self, last_event_id: str | None, analytic: str) -> None:
         """
-        Set last event id.
+        Save last_event_id as persistent.
 
         Args:
             last_event_id: str
@@ -171,13 +198,20 @@ class SaviyntEventsConnector(Connector):
 
     
     def handle_api_exception(self, error: HTTPError) -> None:
-        message = f"Unexpected API error {error.response.status_code} - {str(error.response)}"
+        """
+        Handles API errors gracefully.
+
+        Args:
+            error: HTTPError
+        """
         if error.response.status_code == 401 or error.response.status_code == 403:
             message = "Saviynt API raised an authentication issue. Please check our credentials"
         elif error.response.status_code == 500:
             message = (
                 "Saviynt API raised an internal error"
             )
+        else:
+            message = f"Unexpected API error {error.response.status_code} - {str(error.response)}"
         self.log(level="error", message=message)
         self.log(level="info", message="Waiting for next poll in {self.configuration.frequency} minutes")
         #Timer to prevent spamming
@@ -185,11 +219,10 @@ class SaviyntEventsConnector(Connector):
 
     def run(self) -> None:  # pragma: no cover
         """Run the trigger."""
-        self.log(level="info", message="Starting Connector")        
+        self.log(level="info", message="Starting Connector") 
+        self.client = self.create_client() 
         while self.running:
             try:
-                self.log(level="info", message="Authentication to saviynt")
-                self.client = self.create_client()
                 self._fetch_events()
             except HTTPError as ex:
                 self.handle_api_exception(ex)
