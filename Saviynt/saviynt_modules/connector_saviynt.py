@@ -67,7 +67,7 @@ class SaviyntEventsConnector(Connector):
                             message=(
                                 f"Fetching events for {analytic} from {timeframe} minutes ago"
                             ),
-                            level=level,
+                            level="info",
                         )
                 response = self.client.post(url=f"{self.module.configuration.base_url}/ECM/api/v5/fetchRuntimeControlsData",json=payload_json, timeout=60)
                 if response.ok:
@@ -164,7 +164,7 @@ class SaviyntEventsConnector(Connector):
 
         for uuid in cached_event_ids:
             cache[uuid] = True
-        self.log(message=(f"Cached content : {cache}"),level=level)
+        self.log(message=(f"Cached content : {cache}"),level="info")
         return cache
     
     def save_events_cache(self) -> None:
