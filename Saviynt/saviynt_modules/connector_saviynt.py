@@ -21,7 +21,7 @@ class SaviyntEventsConnector(Connector):
 
     def __init__(self, *args: Any, **kwargs: dict[str, Any]) -> None:
         super().__init__(*args, **kwargs)
-        self.log(level="info", message="Initiating Connector")
+        self.log(level="error", message="Initiating Connector")
         self.context = PersistentJSON("context.json", self._data_path)
         self.limit: int = 500
         #Cache initiali
@@ -65,9 +65,9 @@ class SaviyntEventsConnector(Connector):
                 }
                 self.log(
                             message=(
-                                f"Fetching events for {analytic} from {timeframe} minutes ago"
+                                f"Fetching events for {analytic} from {timeframe+5} minutes ago"
                             ),
-                            level="info",
+                            level="error",
                         )
                 response = self.client.post(url=f"{self.module.configuration.base_url}/ECM/api/v5/fetchRuntimeControlsData",json=payload_json, timeout=60)
                 if response.ok:
@@ -113,7 +113,7 @@ class SaviyntEventsConnector(Connector):
                 batch_of_events = [orjson.dumps(event).decode("utf-8") for event in filtered_events]
                 self.log(
                         message=f"Sending a batch of {len(filtered_events)} messages from {analytic}",
-                        level="info",
+                        level="error",
                     )
                 self.push_events_to_intakes(events=batch_of_events)
                 #Saving events to cache
@@ -123,11 +123,11 @@ class SaviyntEventsConnector(Connector):
             else:
                 self.log(
                     message=f"No events to forward for {analytic}",
-                    level="info",
+                    level="error",
                 )
         self.log(
                     message=f"Sleeping until next batch in {self.configuration.frequency} minutes",
-                    level="info",
+                    level="error",
                 )
         time.sleep(self.configuration.frequency * 60)
 
@@ -139,7 +139,7 @@ class SaviyntEventsConnector(Connector):
             str:
         """
         try:
-            self.log(level="info", message="API Authentication")
+            self.log(level="error", message="API Authentication")
             return ApiClient(
                 auth_url=self.module.configuration.base_url + '/ECM/api/login',
                 client_id=self.module.configuration.username,
@@ -165,7 +165,7 @@ class SaviyntEventsConnector(Connector):
 
         for uuid in cached_event_ids:
             cache[uuid] = True
-        self.log(message=(f"Cached content : {cache}"),level="info",)
+        self.log(message=(f"Cached content : {cache}"),level="error",)
         return cache
     
     def save_events_cache(self) -> None:
@@ -176,7 +176,7 @@ class SaviyntEventsConnector(Connector):
             # save the events cache to the context
             context["cached_event_ids"] = list(self.events_cache.keys())
             debug = context["cached_event_ids"]
-            self.log(message=(f"Cached content : {debug}"),level="info",)
+            self.log(message=(f"Cached content : {debug}"),level="error",)
 
     def get_event_analytic_context(self, analytic: str) -> str:
         """
@@ -221,13 +221,13 @@ class SaviyntEventsConnector(Connector):
         else:
             message = f"Unexpected API error {error.response.status_code} - {str(error.response)}"
         self.log(level="error", message=message)
-        self.log(level="info", message="Waiting for next poll in {self.configuration.frequency} minutes")
+        self.log(level="error", message="Waiting for next poll in {self.configuration.frequency} minutes")
         #Timer to prevent spamming
         time.sleep(10)
 
     def run(self) -> None:  # pragma: no cover
         """Run the trigger."""
-        self.log(level="info", message="Starting Connector") 
+        self.log(level="error", message="Starting Connector") 
         self.client = self.create_client()
         while self.running:
             try:
@@ -240,4 +240,4 @@ class SaviyntEventsConnector(Connector):
                 #Timer to prevent spamming
                 time.sleep(10)
                 raise
-        self.log(level="info", message="Connector has been shut down")
+        self.log(level="error", message="Connector has been shut down")
