@@ -164,7 +164,7 @@ class SaviyntEventsConnector(Connector):
 
         for uuid in cached_event_ids:
             cache[uuid] = True
-        self.log(message=(f"Cached content : {cache}"),level="info")
+        self.log(message=(f"Cached content : {cache}"),level="info",)
         return cache
     
     def save_events_cache(self) -> None:
