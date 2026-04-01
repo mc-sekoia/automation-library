@@ -119,6 +119,7 @@ class SaviyntEventsConnector(Connector):
                 #Saving events to cache
                 for event in filtered_events:
                     self.events_cache[event["ID"]] = True
+                self.save_events_cache()
             else:
                 self.log(
                     message=f"No events to forward for {analytic}",
