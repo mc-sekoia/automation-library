@@ -1,3 +1,4 @@
+import signal
 import time
 from typing import Any
 from datetime import datetime, timedelta
@@ -62,6 +63,12 @@ class SaviyntEventsConnector(Connector):
                     "max": self.limit,
                     "offset": offset
                 }
+                self.log(
+                            message=(
+                                f"Fetching events for {analytic} from {timeframe} minutes ago"
+                            ),
+                            level=level,
+                        )
                 response = self.client.post(url=f"{self.module.configuration.base_url}/ECM/api/v5/fetchRuntimeControlsData",json=payload_json, timeout=60)
                 if response.ok:
                     total: int = int(response.json()["total"])
@@ -157,7 +164,7 @@ class SaviyntEventsConnector(Connector):
 
         for uuid in cached_event_ids:
             cache[uuid] = True
-
+        self.log(message=(f"Cached content : {cache}"),level=level)
         return cache
     
     def save_events_cache(self) -> None:
@@ -213,12 +220,12 @@ class SaviyntEventsConnector(Connector):
         self.log(level="error", message=message)
         self.log(level="info", message="Waiting for next poll in {self.configuration.frequency} minutes")
         #Timer to prevent spamming
-        time.sleep(60)
+        time.sleep(10)
 
     def run(self) -> None:  # pragma: no cover
         """Run the trigger."""
         self.log(level="info", message="Starting Connector") 
-        self.client = self.create_client() 
+        self.client = self.create_client()
         while self.running:
             try:
                 self._fetch_events()
@@ -226,7 +233,8 @@ class SaviyntEventsConnector(Connector):
                 self.handle_api_exception(ex)
             except Exception as ex:
                 self.log_exception(ex, message="An unknown exception occurred")
-                self.log_exception(ex, message="Retrying in 60 seconds")
+                self.log_exception(ex, message="Retrying in 10 seconds")
                 #Timer to prevent spamming
-                time.sleep(60)
+                time.sleep(10)
                 raise
+        self.log(level="info", message="Connector has been shut down")
