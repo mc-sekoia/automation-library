@@ -174,6 +174,7 @@ class SaviyntEventsConnector(Connector):
         with self.context as context:
             # save the events cache to the context
             context["cached_event_ids"] = list(self.events_cache.keys())
+            self.log(message=(f"Cached content : {context["cached_event_ids"]}"),level="info",)
 
     def get_event_analytic_context(self, analytic: str) -> str:
         """
