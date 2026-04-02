@@ -21,10 +21,10 @@ class SaviyntEventsConnector(Connector):
 
     def __init__(self, *args: Any, **kwargs: dict[str, Any]) -> None:
         super().__init__(*args, **kwargs)
-        self.log(level="error", message="Initiating Connector")
+        self.log(level="info", message="Initiating Connector")
         self.context = PersistentJSON("context.json", self._data_path)
         self.limit: int = 500
-        #Cache initiali
+        #Cache initialization
         self.cache_size = 2000
         self.events_cache: Cache[str, bool] = self.load_events_cache()
 
@@ -43,38 +43,37 @@ class SaviyntEventsConnector(Connector):
                 if re.match("[0-9]+_[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}",last_event):
                     last_event_id = last_event.split("_")[0]
                     last_event_date = last_event.split("_")[1]
-                else:
+                elif re.match("[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}_[0-9]+",last_event):
                     last_event_date = last_event.split("_")[0]
                     last_event_id = last_event.split("_")[1]
+                else:
+                    self.log(message=f"Saved persistent last id has a bad format",level="error")
+                    last_event_date = None
+                    last_event_id = None
                 #Elapsed time since last event fetch
-                elapsed_time_minutes = int((datetime.utcnow() - datetime.strptime(last_event_date,"%Y-%m-%d %H:%M:%S")).seconds / 60) +1
-                #Adapt the timeframe if the connector has been launched earlier than its frequency or if no data has been fetched for more than frequency
-                timeframe = elapsed_time_minutes
-            else:
-                #Backs to frequency parameter as a default
-                timeframe = self.configuration.frequency
             offset = 0
             events_to_fetch = True
             analytic_events: list[dict[str, Any]] = []
             while events_to_fetch:
+                #For each event page, compute an adapted timeframe
+                if last_event_date and last_event_id:
+                    elapsed_time_minutes = int((datetime.utcnow() - datetime.strptime(last_event_date,"%Y-%m-%d %H:%M:%S")).seconds / 60) +1
+                    timeframe = elapsed_time_minutes
+                else:
+                    #Backs to frequency parameter as a default
+                    timeframe = self.configuration.frequency
+                #Widen the timeframe to overlap previous fetches
+                timeframe += 5
                 payload_json = {
                     "analyticsname": analytic,
-                    "attributes": {"timeFrame": timeframe+5},
+                    "attributes": {"timeFrame": timeframe},
                     "max": self.limit,
                     "offset": offset
                 }
-                self.log(
-                            message=(
-                                f"Fetching events for {analytic} from {timeframe+5} minutes ago"
-                            ),
-                            level="error",
-                        )
+                self.log(message=(f"Fetching events for {analytic} from {timeframe} minutes ago"),level="info")
                 response = self.client.post(url=f"{self.module.configuration.base_url}/ECM/api/v5/fetchRuntimeControlsData",json=payload_json, timeout=60)
                 if response.ok:
                     total: int = int(response.json()["total"])
-                    displaycount: int = int(response.json()["displaycount"])
-                    if (displaycount < total):
-                        self.log(message=(f"Max api count reached. {total - displaycount} events have been lost. Consider lowering the frequency parameter"),level="error")
                     #Empty result handler
                     if total == 0 or not("result" in response.json()):
                         events_to_fetch = False
@@ -111,24 +110,15 @@ class SaviyntEventsConnector(Connector):
 
                 #Formating events for intake sending
                 batch_of_events = [orjson.dumps(event).decode("utf-8") for event in filtered_events]
-                self.log(
-                        message=f"Sending a batch of {len(filtered_events)} messages from {analytic}",
-                        level="error",
-                    )
+                self.log(message=f"Sending a batch of {len(filtered_events)} messages from {analytic}",level="info")
                 self.push_events_to_intakes(events=batch_of_events)
                 #Saving events to cache
                 for event in filtered_events:
                     self.events_cache[event["ID"]] = True
                 self.save_events_cache()
             else:
-                self.log(
-                    message=f"No events to forward for {analytic}",
-                    level="error",
-                )
-        self.log(
-                    message=f"Sleeping until next batch in {self.configuration.frequency} minutes",
-                    level="error",
-                )
+                self.log(message=f"No events to forward for {analytic}",level="info")
+        self.log(message=f"Sleeping until next batch in {self.configuration.frequency} minutes",level="info")
         time.sleep(self.configuration.frequency * 60)
 
     def create_client(self) -> ApiClient:
@@ -165,7 +155,7 @@ class SaviyntEventsConnector(Connector):
 
         for uuid in cached_event_ids:
             cache[uuid] = True
-        self.log(message=(f"Cached content : {cache}"),level="error",)
+        self.log(message=(f"Loading cached content : {cache}"),level="info",)
         return cache
     
     def save_events_cache(self) -> None:
@@ -176,7 +166,7 @@ class SaviyntEventsConnector(Connector):
             # save the events cache to the context
             context["cached_event_ids"] = list(self.events_cache.keys())
             debug = context["cached_event_ids"]
-            self.log(message=(f"Cached content : {debug}"),level="error",)
+            self.log(message=(f"Saving cached content : {debug}"),level="info",)
 
     def get_event_analytic_context(self, analytic: str) -> str:
         """
@@ -221,13 +211,13 @@ class SaviyntEventsConnector(Connector):
         else:
             message = f"Unexpected API error {error.response.status_code} - {str(error.response)}"
         self.log(level="error", message=message)
-        self.log(level="error", message="Waiting for next poll in {self.configuration.frequency} minutes")
+        self.log(level="info", message="Waiting for next poll in {self.configuration.frequency} minutes")
         #Timer to prevent spamming
         time.sleep(10)
 
     def run(self) -> None:  # pragma: no cover
         """Run the trigger."""
-        self.log(level="error", message="Starting Connector") 
+        self.log(level="info", message="Starting Connector") 
         self.client = self.create_client()
         while self.running:
             try:
@@ -240,4 +230,4 @@ class SaviyntEventsConnector(Connector):
                 #Timer to prevent spamming
                 time.sleep(10)
                 raise
-        self.log(level="error", message="Connector has been shut down")
+        self.log(level="info", message="Connector has been shut down")
