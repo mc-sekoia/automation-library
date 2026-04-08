@@ -27,7 +27,7 @@ class SaviyntEventsConnector(Connector):
         #Cache initialization
         self.cache_size = 2000
         self.events_cache: Cache[str, bool] = self.load_events_cache()
-
+    
     def _fetch_events(self) -> None:
         """
         Successively queries the pages while more are available
@@ -37,7 +37,8 @@ class SaviyntEventsConnector(Connector):
             #Get cached last event fetched
             last_event_date: str |None = None
             last_event_id: str | None= None
-            last_event: str = self.get_event_analytic_context(analytic)
+            #Retrieving last event info
+            last_event: str = self.get_analytic_last_event(analytic)
             if last_event:
                 #Handling two id formats : id_date and date_id
                 if re.match("[0-9]+_[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}",last_event):
@@ -50,14 +51,14 @@ class SaviyntEventsConnector(Connector):
                     self.log(message=f"Saved persistent last id has a bad format",level="error")
                     last_event_date = None
                     last_event_id = None
-                #Elapsed time since last event fetch
+            #Setting pagination processing flags
             offset = 0
             events_to_fetch = True
             analytic_events: list[dict[str, Any]] = []
             while events_to_fetch:
                 #For each event page, compute an adapted timeframe
                 if last_event_date and last_event_id:
-                    elapsed_time_minutes = int((datetime.utcnow() - datetime.strptime(last_event_date,"%Y-%m-%d %H:%M:%S")).seconds / 60) +1
+                    elapsed_time_minutes = int((datetime.utcnow() - datetime.strptime(last_event_date,"%Y-%m-%d %H:%M:%S")).total_seconds() / 60) +1
                     timeframe = elapsed_time_minutes
                 else:
                     #Backs to frequency parameter as a default
@@ -93,24 +94,20 @@ class SaviyntEventsConnector(Connector):
                     else:
                         # Exit trigger if we can't authenticate against the server
                         level = "critical" if response.status_code in [403] else "error"
-                        self.log(
-                            message=(
-                                f"Request on Saviynt API to fetch events failed with status {response.status_code} - {response.reason}"
-                            ),
-                            level=level,
-                        )
-                        return []
+                        self.log(message=(f"Request on Saviynt API to fetch events failed with status {response.status_code} - {response.reason}"),level=level)
+                        return None
             if len(analytic_events) > 0:
-                #Cleaning events by removing duplicates
+                #Removing duplicates (due to the offset handling in a relative timerange query)
+                analytic_events = list(dict.fromkeys(analytic_events))
+                #Cleaning events by removing events that has already been sent before
                 filtered_events = [
                     event for event in analytic_events if event.get("ID") is not None and event["ID"] not in self.events_cache
                 ]
-                last_event_id = filtered_events[-1].get("ID")
-                self.update_event_analytic_context(last_event_id, analytic)
-
                 #Formating events for intake sending
                 batch_of_events = [orjson.dumps(event).decode("utf-8") for event in filtered_events]
                 self.log(message=f"Sending a batch of {len(filtered_events)} messages from {analytic}",level="info")
+                last_event_id = filtered_events[-1].get("ID")
+                self.update_event_analytic_context(last_event_id, analytic)
                 self.push_events_to_intakes(events=batch_of_events)
                 #Saving events to cache
                 for event in filtered_events:
@@ -129,7 +126,7 @@ class SaviyntEventsConnector(Connector):
             str:
         """
         try:
-            self.log(level="error", message="API Authentication")
+            self.log(level="info", message="API Authentication")
             return ApiClient(
                 auth_url=self.module.configuration.base_url + '/ECM/api/login',
                 client_id=self.module.configuration.username,
@@ -148,11 +145,9 @@ class SaviyntEventsConnector(Connector):
         Load the events cache.
         """
         cache: Cache[str, bool] = LRUCache(maxsize=self.cache_size)
-
         with self.context as context:
             # load the cache from the context
             cached_event_ids = context.get("cached_event_ids", [])
-
         for uuid in cached_event_ids:
             cache[uuid] = True
         self.log(message=(f"Loading cached content : {cache}"),level="info",)
@@ -168,7 +163,7 @@ class SaviyntEventsConnector(Connector):
             debug = context["cached_event_ids"]
             self.log(message=(f"Saving cached content : {debug}"),level="info",)
 
-    def get_event_analytic_context(self, analytic: str) -> str:
+    def get_analytic_last_event(self, analytic: str) -> str:
         """
         Get last event id from persistent storage.
 
@@ -194,7 +189,6 @@ class SaviyntEventsConnector(Connector):
         with self.context as cache:
             cache[analytic] = {"last_event_id": last_event_id}
 
-    
     def handle_api_exception(self, error: HTTPError) -> None:
         """
         Handles API errors gracefully.
