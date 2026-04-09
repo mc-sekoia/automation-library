@@ -80,7 +80,10 @@ class SaviyntEventsConnector(Connector):
                     "max": self.limit,
                     "offset": offset,
                 }
-                self.log(message=(f"Fetching events for {analytic} from {timeframe} minutes ago"), level="info")
+                self.log(
+                    message=(f"Fetching events for {analytic} from {timeframe} minutes ago, offset {offset}"),
+                    level="info",
+                )
                 response = self.client.post(
                     url=f"{self.module.configuration.base_url}/ECM/api/v5/fetchRuntimeControlsData",
                     json=payload_json,
@@ -127,7 +130,10 @@ class SaviyntEventsConnector(Connector):
                 ]
                 # Formating events for intake sending
                 batch_of_events = [orjson.dumps(event).decode("utf-8") for event in filtered_events]
-                self.log(message=f"Sending a batch of {len(filtered_events)} messages from {analytic}", level="info")
+                self.log(
+                    message=f"Sending a batch of {len(filtered_events)} filtered messages from {analytic}",
+                    level="info",
+                )
                 last_event_id = filtered_events[-1].get("ID")
                 self.update_event_analytic_context(last_event_id, analytic)
                 self.push_events_to_intakes(events=batch_of_events)
