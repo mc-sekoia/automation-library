@@ -178,10 +178,10 @@ class SaviyntEventsConnector(Connector):
             cached_event_ids = context.get("cached_event_ids", [])
         for uuid in cached_event_ids:
             cache[uuid] = True
-        self.log(
-            message=(f"Loading cached content : {cache}"),
-            level="info",
-        )
+        # self.log(
+        #    message=(f"Loading cached content : {cache}"),
+        #    level="info",
+        # )
         return cache
 
     def save_events_cache(self) -> None:
@@ -192,10 +192,10 @@ class SaviyntEventsConnector(Connector):
             # save the events cache to the context
             context["cached_event_ids"] = list(self.events_cache.keys())
             debug = context["cached_event_ids"]
-            self.log(
-                message=(f"Saving cached content : {debug}"),
-                level="info",
-            )
+            # self.log(
+            #    message=(f"Saving cached content : {debug}"),
+            #    level="info",
+            # )
 
     def get_analytic_last_event(self, analytic: str) -> str:
         """
@@ -236,7 +236,7 @@ class SaviyntEventsConnector(Connector):
         else:
             message = f"Unexpected API error {error.response.status_code} - {str(error.response)}"
         self.log(level="error", message=message)
-        self.log(level="info", message="Waiting for next poll in {self.configuration.frequency} minutes")
+        self.log(level="info", message="Sleeping 10 seconds to prevent error spamming")
         # Timer to prevent spamming
         time.sleep(10)
 
@@ -251,8 +251,7 @@ class SaviyntEventsConnector(Connector):
                 self.handle_api_exception(ex)
             except Exception as ex:
                 self.log_exception(ex, message="An unknown exception occurred")
-                self.log_exception(ex, message="Retrying in 10 seconds")
+                self.log_exception(ex, message="Sleeping 10 seconds to prevent error spamming")
                 # Timer to prevent spamming
                 time.sleep(10)
                 raise
-        self.log(level="info", message="Connector has been shut down")
