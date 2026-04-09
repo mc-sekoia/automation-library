@@ -42,12 +42,12 @@ class SaviyntEventsConnector(Connector):
             last_event: str = self.get_analytic_last_event(analytic)
             if last_event:
                 # Handling two id formats : id_date and date_id
-                if re.match("[0-9]+_[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}", last_event):
-                    last_event_id = last_event.split("_")[0]
-                    last_event_date = last_event.split("_")[1]
-                elif re.match("[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}_[0-9]+", last_event):
-                    last_event_date = last_event.split("_")[0]
-                    last_event_id = last_event.split("_")[1]
+                if re.match("[0-9_]+_[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}", last_event):
+                    last_event_id = last_event.split("_")[:-1]
+                    last_event_date = last_event.split("_")[-1:]
+                elif re.match("[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}_[0-9_]+", last_event):
+                    last_event_date = last_event.split("_")[:-1]
+                    last_event_id = last_event.split("_")[-1:]
                 else:
                     self.log(message=f"Saved persistent last id has a bad format", level="error")
                     last_event_date = None
