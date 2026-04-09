@@ -29,122 +29,98 @@ class SaviyntEventsConnector(Connector):
         self.cache_size = 2000
         self.events_cache: Cache[str, bool] = self.load_events_cache()
 
-    def _fetch_events(self) -> None:
+    def utf8_format_and_send_events(self, events: list[dict[str, Any]] = []) -> None:
+        batch_of_events = [orjson.dumps(event).decode("utf-8") for event in events]
+        self.push_events_to_intakes(events=batch_of_events)
+
+    def _fetch_analytic_events(self, analytic: str) -> None:
         """
         Successively queries the pages while more are available
         and the current batch is not too big.
         """
-        for analytic in self.configuration.analytics_name:
-            # Get cached last event fetched
-            last_event_date: str | None = None
-            last_event_id: str | None = None
-            # Retrieving last event info
-            last_event: str = self.get_analytic_last_event(analytic)
-            if last_event:
-                # Handling two id formats : id_date and date_id
-                if re.match("[0-9_]+_[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}", last_event):
-                    last_event_id = last_event.split("_")[:-1]
-                    last_event_date = last_event.split("_")[-1:]
-                elif re.match("[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}_[0-9_]+", last_event):
-                    last_event_date = last_event.split("_")[:-1]
-                    last_event_id = last_event.split("_")[-1:]
-                else:
-                    self.log(message=f"Saved persistent last id has a bad format", level="error")
-                    last_event_date = None
-                    last_event_id = None
-            # Setting pagination processing flags
-            offset = 0
-            events_to_fetch = True
-            analytic_events: list[dict[str, Any]] = []
-            while events_to_fetch:
-                # For each event page, compute an adapted timeframe
-                if last_event_date and last_event_id:
-                    elapsed_time_minutes = (
-                        int(
-                            (
-                                datetime.utcnow() - datetime.strptime(last_event_date, "%Y-%m-%d %H:%M:%S")
-                            ).total_seconds()
-                            / 60
-                        )
-                        + 1
-                    )
-                    timeframe = elapsed_time_minutes
-                else:
-                    # Backs to frequency parameter as a default
-                    timeframe = self.configuration.frequency
-                # Widen the timeframe to overlap previous fetches
-                timeframe += 5
-                payload_json = {
-                    "analyticsname": analytic,
-                    "attributes": {"timeFrame": timeframe},
-                    "max": self.limit,
-                    "offset": offset,
-                }
-                self.log(
-                    message=(f"Fetching events for {analytic} from {timeframe} minutes ago, offset {offset}"),
-                    level="info",
-                )
-                response = self.client.post(
-                    url=f"{self.module.configuration.base_url}/ECM/api/v5/fetchRuntimeControlsData",
-                    json=payload_json,
-                    timeout=60,
-                )
-                if response.ok:
-                    total: int = int(response.json()["total"])
-                    # Empty result handler
-                    if total == 0 or not ("result" in response.json()):
-                        events_to_fetch = False
-                        break
-                    else:
-                        # Removing duplicates (due to the offset handling in a relative timerange query)
-                        result = response.json()["result"]
-                        for event in result:
-                            if event not in analytic_events:
-                                analytic_events.append(event)
-                        # Offset pages handling
-                        offset += 1
-                        if total > offset * self.limit:
-                            events_to_fetch = True
-                        else:
-                            events_to_fetch = False
-                # Error handling
-                else:
-                    if response.status_code in [401, 403, 500]:
-                        raise APIException(response.status_code, response.reason, response.text)
-                    else:
-                        # Exit trigger if we can't authenticate against the server
-                        level = "critical" if response.status_code in [403] else "error"
-                        self.log(
-                            message=(
-                                f"Request on Saviynt API to fetch events failed with status {response.status_code} - {response.reason}"
-                            ),
-                            level=level,
-                        )
-                        return None
-            if len(analytic_events) > 0:
-                # Cleaning events by removing events that has already been sent before
-                filtered_events = [
-                    event
-                    for event in analytic_events
-                    if event.get("ID") is not None and event["ID"] not in self.events_cache
-                ]
-                # Formating events for intake sending
-                batch_of_events = [orjson.dumps(event).decode("utf-8") for event in filtered_events]
-                self.log(
-                    message=f"Sending a batch of {len(filtered_events)} filtered messages from {analytic}",
-                    level="info",
-                )
-                last_event_id = filtered_events[-1].get("ID")
-                self.update_event_analytic_context(last_event_id, analytic)
-                self.push_events_to_intakes(events=batch_of_events)
-                # Saving events to cache
-                for event in filtered_events:
-                    self.events_cache[event["ID"]] = True
-                self.save_events_cache()
+        # Get cached last event fetched
+        last_event_date: str | None = None
+        last_event_id: str | None = None
+        # Retrieving last event info
+        last_event: str = self.get_analytic_last_event(analytic)
+        if last_event:
+            # Handling two id formats : id_date and date_id
+            if re.match("[0-9_]+_[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}", last_event):
+                last_event_id = last_event.split("_")[:-1]
+                last_event_date = last_event.split("_")[-1:]
+            elif re.match("[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}_[0-9_]+", last_event):
+                last_event_date = last_event.split("_")[:-1]
+                last_event_id = last_event.split("_")[-1:]
             else:
-                self.log(message=f"No events to forward for {analytic}", level="info")
-        self.log(message=f"Sleeping until next batch in {self.configuration.frequency} minutes", level="info")
-        time.sleep(self.configuration.frequency * 60)
+                self.log(message=f"Saved persistent last id has a bad format", level="error")
+                last_event_date = None
+                last_event_id = None
+        # Setting pagination processing flags
+        offset = 0
+        events_to_fetch = True
+        analytic_events: list[dict[str, Any]] = []
+        while events_to_fetch:
+            # For each event page, compute an adapted timeframe
+            if last_event_date and last_event_id:
+                elapsed_time_minutes = (
+                    int(
+                        (datetime.utcnow() - datetime.strptime(last_event_date, "%Y-%m-%d %H:%M:%S")).total_seconds()
+                        / 60
+                    )
+                    + 1
+                )
+                timeframe = elapsed_time_minutes
+            else:
+                # Backs to frequency parameter as a default
+                timeframe = self.configuration.frequency
+            # Widen the timeframe to overlap previous fetches
+            timeframe += 5
+            payload_json = {
+                "analyticsname": analytic,
+                "attributes": {"timeFrame": timeframe},
+                "max": self.limit,
+                "offset": offset,
+            }
+            self.log(
+                message=(f"Fetching events for {analytic} from {timeframe} minutes ago, offset {offset}"),
+                level="info",
+            )
+            response = self.client.post(
+                url=f"{self.module.configuration.base_url}/ECM/api/v5/fetchRuntimeControlsData",
+                json=payload_json,
+                timeout=60,
+            )
+            if response.ok:
+                total: int = int(response.json()["total"])
+                # Empty result handler
+                if total == 0 or not ("result" in response.json()):
+                    events_to_fetch = False
+                    break
+                else:
+                    # Removing duplicates (due to the offset handling in a relative timerange query)
+                    result = response.json()["result"]
+                    for event in result:
+                        if event not in analytic_events:
+                            analytic_events.append(event)
+                    # Offset pages handling
+                    offset += 1
+                    if total > offset * self.limit:
+                        events_to_fetch = True
+                    else:
+                        events_to_fetch = False
+            # Error handling
+            else:
+                raise APIException(response.status_code, response.reason, response.text)
+        if len(analytic_events) > 0:
+            # Cleaning events by removing events that has already been sent before
+            filtered_events = [
+                event
+                for event in analytic_events
+                if event.get("ID") is not None and event["ID"] not in self.events_cache
+            ]
+            return filtered_events
+        else:
+            return None
 
     def create_client(self) -> ApiClient:
         """
@@ -178,10 +154,6 @@ class SaviyntEventsConnector(Connector):
             cached_event_ids = context.get("cached_event_ids", [])
         for uuid in cached_event_ids:
             cache[uuid] = True
-        # self.log(
-        #    message=(f"Loading cached content : {cache}"),
-        #    level="info",
-        # )
         return cache
 
     def save_events_cache(self) -> None:
@@ -192,10 +164,6 @@ class SaviyntEventsConnector(Connector):
             # save the events cache to the context
             context["cached_event_ids"] = list(self.events_cache.keys())
             debug = context["cached_event_ids"]
-            # self.log(
-            #    message=(f"Saving cached content : {debug}"),
-            #    level="info",
-            # )
 
     def get_analytic_last_event(self, analytic: str) -> str:
         """
@@ -211,7 +179,7 @@ class SaviyntEventsConnector(Connector):
             last_event_id = analytic_context.get("last_event_id")
             return last_event_id
 
-    def update_event_analytic_context(self, last_event_id: str | None, analytic: str) -> None:
+    def update_analytic_last_event(self, last_event_id: str | None, analytic: str) -> None:
         """
         Save last_event_id as persistent.
 
@@ -245,13 +213,33 @@ class SaviyntEventsConnector(Connector):
         self.log(level="info", message="Starting Connector")
         self.client = self.create_client()
         while self.running:
-            try:
-                self._fetch_events()
-            except HTTPError as ex:
-                self.handle_api_exception(ex)
-            except Exception as ex:
-                self.log_exception(ex, message="An unknown exception occurred")
-                self.log_exception(ex, message="Sleeping 10 seconds to prevent error spamming")
-                # Timer to prevent spamming
-                time.sleep(10)
-                raise
+            for analytic in self.configuration.analytics_name:
+                try:
+                    analytic_events = self._fetch_analytic_events(analytic)
+                    if analytic_events != None and len(analytic_events) > 0:
+                        # Formating events for intake sending
+                        self.log(
+                            message=f"Sending a batch of {len(analytic_events)} filtered messages from {analytic}",
+                            level="info",
+                        )
+                        last_event_id = analytic_events[-1].get("ID")
+                        self.update_analytic_last_event(last_event_id, analytic)
+                        self.utf8_format_and_send_events(analytic_events)
+                        # Saving events to cache
+                        for event in analytic_events:
+                            self.events_cache[event["ID"]] = True
+                        self.save_events_cache()
+                    else:
+                        self.log(message=f"No events to forward for {analytic}", level="info")
+
+                except HTTPError as ex:
+                    self.handle_api_exception(ex)
+                except Exception as ex:
+                    self.log_exception(ex, message="An unknown exception occurred")
+                    self.log_exception(ex, message="Sleeping 10 seconds to prevent error spamming")
+                    self.log(message=f"Sleeping 10 seconds to prevent error spamming", level="info")
+                    # Timer to prevent spamming
+                    time.sleep(10)
+                    raise
+            self.log(message=f"Sleeping until next batch in {self.configuration.frequency} minutes", level="info")
+            time.sleep(self.configuration.frequency * 60)
