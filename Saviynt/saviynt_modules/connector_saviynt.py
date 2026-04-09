@@ -93,7 +93,11 @@ class SaviyntEventsConnector(Connector):
                         events_to_fetch = False
                         break
                     else:
-                        analytic_events.extend(response.json()["result"])
+                        # Removing duplicates (due to the offset handling in a relative timerange query)
+                        result = response.json()["result"]
+                        for event in result:
+                            if event not in analytic_events:
+                                analytic_events.append(event)
                         # Offset pages handling
                         offset += 1
                         if total > offset * self.limit:
@@ -115,8 +119,6 @@ class SaviyntEventsConnector(Connector):
                         )
                         return None
             if len(analytic_events) > 0:
-                # Removing duplicates (due to the offset handling in a relative timerange query)
-                analytic_events = list(dict.fromkeys(analytic_events))
                 # Cleaning events by removing events that has already been sent before
                 filtered_events = [
                     event
