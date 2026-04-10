@@ -109,7 +109,7 @@ class SaviyntEventsConnector(Connector):
                     last_event_id = "_".join(last_event.split("_")[:-1])
                     last_event_date = "".join(last_event.split("_")[-1:])
                 elif re.match("[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}_[0-9_]+", last_event):
-                    last_event_date = "".join(last_event.split("_")[:-1])
+                    last_event_date = "".join(last_event.split("_")[:1])
                     last_event_id = "_".join(last_event.split("_")[-1:])
                 else:
                     self.log(message=f"Saved persistent last id has a bad format", level="error")
@@ -168,7 +168,6 @@ class SaviyntEventsConnector(Connector):
         while events_to_fetch:
             # For each event page, compute an adapted timeframe
             if last_event_date and last_event_id:
-                self.log(level="info", message=f"Debug : 1 {datetime.utcnow()}, 2 {last_event_date} 10 seconds to prevent error spamming")
                 elapsed_time_minutes = (
                     int(
                         (datetime.utcnow() - datetime.strptime(last_event_date, "%Y-%m-%d %H:%M:%S")).total_seconds()
