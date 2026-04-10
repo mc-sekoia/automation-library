@@ -36,14 +36,14 @@ class SaviyntEventsConnector(Connector):
         Args:
             events: list[dict[str, Any]]
         """
-        #Formating events to utf8 before sending them to the intake 
+        # Formating events to utf8 before sending them to the intake
         batch_of_events = [orjson.dumps(event).decode("utf-8") for event in events]
         self.push_events_to_intakes(events=batch_of_events)
 
     def create_client(self) -> ApiClient:
         """
         Initiates the APIClient connection.
-        
+
         Returns:
             ApiClient
         """
@@ -65,7 +65,7 @@ class SaviyntEventsConnector(Connector):
     def load_events_cache(self) -> Cache[str, bool]:
         """
         Load the events cache and returns it.
-        
+
         Returns:
             Cache[str, bool]
         """
@@ -86,13 +86,13 @@ class SaviyntEventsConnector(Connector):
             context["cached_event_ids"] = list(self.events_cache.keys())
             debug = context["cached_event_ids"]
 
-    def get_analytic_last_event(self, analytic: str) -> tuple[str,str]|None:
+    def get_analytic_last_event(self, analytic: str) -> tuple[str, str] | None:
         """
         Get last event id and date from persistent storage for one report/analytic.
 
         Args:
             analytic: str
-        
+
         Returns:
             tuple:
                 str:
@@ -154,7 +154,7 @@ class SaviyntEventsConnector(Connector):
 
         Args:
             analytic: str
-        """        
+        """
         # Retrieving last event info
         if last_event := self.get_analytic_last_event(analytic):
             last_event_id, last_event_date = last_event
@@ -164,7 +164,7 @@ class SaviyntEventsConnector(Connector):
         offset = 0
         events_to_fetch = True
         analytic_events: list[dict[str, Any]] = []
-        #Starting pages crawling
+        # Starting pages crawling
         while events_to_fetch:
             # For each event page, compute an adapted timeframe
             if last_event_date and last_event_id:
@@ -181,15 +181,17 @@ class SaviyntEventsConnector(Connector):
                 timeframe = self.configuration.frequency
             # Widen the timeframe to overlap previous fetches
             timeframe += 5
-            #Setting the json payload
+            # Setting the json payload
             payload_json = {
                 "analyticsname": analytic,
                 "attributes": {"timeFrame": timeframe},
                 "max": self.limit,
                 "offset": offset,
             }
-            self.log(message=(f"Fetching events for {analytic} from {timeframe} minutes ago, offset {offset}"),level="info")
-            #Querying API to fetch logs 
+            self.log(
+                message=(f"Fetching events for {analytic} from {timeframe} minutes ago, offset {offset}"), level="info"
+            )
+            # Querying API to fetch logs
             response = self.client.post(
                 url=f"{self.module.configuration.base_url}/ECM/api/v5/fetchRuntimeControlsData",
                 json=payload_json,
@@ -226,7 +228,6 @@ class SaviyntEventsConnector(Connector):
         else:
             return None
 
-
     def run(self) -> None:  # pragma: no cover
         """
         Run the trigger.
@@ -237,16 +238,16 @@ class SaviyntEventsConnector(Connector):
             for analytic in self.configuration.analytics_name:
                 try:
                     analytic_events = self._fetch_analytic_events(analytic)
-                    #If any events fetched
+                    # If any events fetched
                     if analytic_events != None and len(analytic_events) > 0:
-                        #Store the last event id in persistent storage
+                        # Store the last event id in persistent storage
                         last_event_id = analytic_events[-1].get("ID")
                         self.update_analytic_last_event(last_event_id, analytic)
                         self.log(
                             message=f"Sending a batch of {len(analytic_events)} filtered messages from {analytic}",
                             level="info",
                         )
-                        #Send events to the intake
+                        # Send events to the intake
                         self.utf8_format_and_send_events(analytic_events)
                         # Saving events to cache
                         for event in analytic_events:
