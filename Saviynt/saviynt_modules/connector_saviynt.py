@@ -168,6 +168,7 @@ class SaviyntEventsConnector(Connector):
         while events_to_fetch:
             # For each event page, compute an adapted timeframe
             if last_event_date and last_event_id:
+                self.log(level="info", message=f"Debug : 1 {datetime.utcnow()}, 2 {last_event_date} 10 seconds to prevent error spamming")
                 elapsed_time_minutes = (
                     int(
                         (datetime.utcnow() - datetime.strptime(last_event_date, "%Y-%m-%d %H:%M:%S")).total_seconds()
