@@ -30,105 +30,22 @@ class SaviyntEventsConnector(Connector):
         self.events_cache: Cache[str, bool] = self.load_events_cache()
 
     def utf8_format_and_send_events(self, events: list[dict[str, Any]] = []) -> None:
+        """
+        Format events and sends it to the intake
+
+        Args:
+            events: list[dict[str, Any]]
+        """
+        #Formating events to utf8 before sending them to the intake 
         batch_of_events = [orjson.dumps(event).decode("utf-8") for event in events]
         self.push_events_to_intakes(events=batch_of_events)
-
-    def _fetch_analytic_events(self, analytic: str) -> None:
-        """
-        Successively queries the pages while more are available
-        and the current batch is not too big.
-        """
-        # Get cached last event fetched
-        last_event_date: str | None = None
-        last_event_id: str | None = None
-        # Retrieving last event info
-        last_event: str = self.get_analytic_last_event(analytic)
-        if last_event:
-            # Handling two id formats : id_date and date_id
-            if re.match("[0-9_]+_[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}", last_event):
-                last_event_id = "_".join(last_event.split("_")[:-1])
-                last_event_date = "".join(last_event.split("_")[-1:])
-            elif re.match("[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}_[0-9_]+", last_event):
-                last_event_date = "".join(last_event.split("_")[:-1])
-                last_event_id = "_".join(last_event.split("_")[-1:])
-            else:
-                self.log(message=f"Saved persistent last id has a bad format", level="error")
-                last_event_date = None
-                last_event_id = None
-        # Setting pagination processing flags
-        offset = 0
-        events_to_fetch = True
-        analytic_events: list[dict[str, Any]] = []
-        while events_to_fetch:
-            # For each event page, compute an adapted timeframe
-            if last_event_date and last_event_id:
-                print(last_event_date)
-                elapsed_time_minutes = (
-                    int(
-                        (datetime.utcnow() - datetime.strptime(last_event_date, "%Y-%m-%d %H:%M:%S")).total_seconds()
-                        / 60
-                    )
-                    + 1
-                )
-                timeframe = elapsed_time_minutes
-            else:
-                # Backs to frequency parameter as a default
-                timeframe = self.configuration.frequency
-            # Widen the timeframe to overlap previous fetches
-            timeframe += 5
-            payload_json = {
-                "analyticsname": analytic,
-                "attributes": {"timeFrame": timeframe},
-                "max": self.limit,
-                "offset": offset,
-            }
-            self.log(
-                message=(f"Fetching events for {analytic} from {timeframe} minutes ago, offset {offset}"),
-                level="info",
-            )
-            response = self.client.post(
-                url=f"{self.module.configuration.base_url}/ECM/api/v5/fetchRuntimeControlsData",
-                json=payload_json,
-                timeout=60,
-            )
-            if response.ok:
-                total: int = int(response.json()["total"])
-                # Empty result handler
-                if total == 0 or not ("result" in response.json()):
-                    events_to_fetch = False
-                    break
-                else:
-                    # Removing duplicates (due to the offset handling in a relative timerange query)
-                    result = response.json()["result"]
-                    for event in result:
-                        if event not in analytic_events:
-                            analytic_events.append(event)
-                    # Offset pages handling
-                    offset += 1
-                    if total > offset * self.limit:
-                        events_to_fetch = True
-                    else:
-                        events_to_fetch = False
-            # Error handling
-            else:
-                raise APIException(response.status_code, response.reason, response.text)
-        if len(analytic_events) > 0:
-            # Cleaning events by removing events that has already been sent before
-            filtered_events = [
-                event
-                for event in analytic_events
-                if event.get("ID") is not None and event["ID"] not in self.events_cache
-            ]
-            return filtered_events
-        else:
-            return None
 
     def create_client(self) -> ApiClient:
         """
         Initiates the APIClient connection.
-
+        
         Returns:
-            str:
+            ApiClient
         """
         try:
             self.log(level="info", message="API Authentication")
@@ -147,7 +64,10 @@ class SaviyntEventsConnector(Connector):
 
     def load_events_cache(self) -> Cache[str, bool]:
         """
-        Load the events cache.
+        Load the events cache and returns it.
+        
+        Returns:
+            Cache[str, bool]
         """
         cache: Cache[str, bool] = LRUCache(maxsize=self.cache_size)
         with self.context as context:
@@ -166,19 +86,38 @@ class SaviyntEventsConnector(Connector):
             context["cached_event_ids"] = list(self.events_cache.keys())
             debug = context["cached_event_ids"]
 
-    def get_analytic_last_event(self, analytic: str) -> str:
+    def get_analytic_last_event(self, analytic: str) -> tuple[str,str]|None:
         """
-        Get last event id from persistent storage.
+        Get last event id and date from persistent storage for one report/analytic.
 
+        Args:
+            analytic: str
+        
         Returns:
-            str:
+            tuple:
+                str:
+                str:
         """
         with self.context as cache:
             analytic_context = cache.get(analytic)
             if not analytic_context:
                 analytic_context = {}
-            last_event_id = analytic_context.get("last_event_id")
-            return last_event_id
+            last_event = analytic_context.get("last_event_id")
+            if last_event:
+                # Handling two id formats : id_date and date_id
+                if re.match("[0-9_]+_[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}", last_event):
+                    last_event_id = "_".join(last_event.split("_")[:-1])
+                    last_event_date = "".join(last_event.split("_")[-1:])
+                elif re.match("[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}_[0-9_]+", last_event):
+                    last_event_date = "".join(last_event.split("_")[:-1])
+                    last_event_id = "_".join(last_event.split("_")[-1:])
+                else:
+                    self.log(message=f"Saved persistent last id has a bad format", level="error")
+                    last_event_date = None
+                    last_event_id = None
+                return (last_event_id, last_event_date)
+            else:
+                return (None, None)
 
     def update_analytic_last_event(self, last_event_id: str | None, analytic: str) -> None:
         """
@@ -209,22 +148,105 @@ class SaviyntEventsConnector(Connector):
         # Timer to prevent spamming
         time.sleep(10)
 
+    def _fetch_analytic_events(self, analytic: str) -> None:
+        """
+        Successively queries the pages while more are available for one report/analytic
+
+        Args:
+            analytic: str
+        """        
+        # Retrieving last event info
+        if last_event := self.get_analytic_last_event(analytic):
+            last_event_id, last_event_date = last_event
+        else:
+            last_event_id = last_event_date = None
+        # Setting pagination processing flags
+        offset = 0
+        events_to_fetch = True
+        analytic_events: list[dict[str, Any]] = []
+        #Starting pages crawling
+        while events_to_fetch:
+            # For each event page, compute an adapted timeframe
+            if last_event_date and last_event_id:
+                elapsed_time_minutes = (
+                    int(
+                        (datetime.utcnow() - datetime.strptime(last_event_date, "%Y-%m-%d %H:%M:%S")).total_seconds()
+                        / 60
+                    )
+                    + 1
+                )
+                timeframe = elapsed_time_minutes
+            else:
+                # Backs to frequency parameter as a default
+                timeframe = self.configuration.frequency
+            # Widen the timeframe to overlap previous fetches
+            timeframe += 5
+            #Setting the json payload
+            payload_json = {
+                "analyticsname": analytic,
+                "attributes": {"timeFrame": timeframe},
+                "max": self.limit,
+                "offset": offset,
+            }
+            self.log(message=(f"Fetching events for {analytic} from {timeframe} minutes ago, offset {offset}"),level="info")
+            #Querying API to fetch logs 
+            response = self.client.post(
+                url=f"{self.module.configuration.base_url}/ECM/api/v5/fetchRuntimeControlsData",
+                json=payload_json,
+                timeout=60,
+            )
+            if response.ok:
+                total: int = int(response.json()["total"])
+                # Empty result handler
+                if total == 0 or not ("result" in response.json()):
+                    events_to_fetch = False
+                    break
+                else:
+                    # Removing duplicates (due to the offset handling in a relative timerange query)
+                    for event in response.json()["result"]:
+                        if event not in analytic_events:
+                            analytic_events.append(event)
+                    # Offset pages handling
+                    offset += 1
+                    if total > offset * self.limit:
+                        events_to_fetch = True
+                    else:
+                        events_to_fetch = False
+            # Error handling
+            else:
+                raise APIException(response.status_code, response.reason, response.text)
+        if len(analytic_events) > 0:
+            # Cleaning events by removing events that has already been sent before
+            filtered_events = [
+                event
+                for event in analytic_events
+                if event.get("ID") is not None and event["ID"] not in self.events_cache
+            ]
+            return filtered_events
+        else:
+            return None
+
+
     def run(self) -> None:  # pragma: no cover
-        """Run the trigger."""
+        """
+        Run the trigger.
+        """
         self.log(level="info", message="Starting Connector")
         self.client = self.create_client()
         while self.running:
             for analytic in self.configuration.analytics_name:
                 try:
                     analytic_events = self._fetch_analytic_events(analytic)
+                    #If any events fetched
                     if analytic_events != None and len(analytic_events) > 0:
-                        # Formating events for intake sending
+                        #Store the last event id in persistent storage
+                        last_event_id = analytic_events[-1].get("ID")
+                        self.update_analytic_last_event(last_event_id, analytic)
                         self.log(
                             message=f"Sending a batch of {len(analytic_events)} filtered messages from {analytic}",
                             level="info",
                         )
-                        last_event_id = analytic_events[-1].get("ID")
-                        self.update_analytic_last_event(last_event_id, analytic)
+                        #Send events to the intake
                         self.utf8_format_and_send_events(analytic_events)
                         # Saving events to cache
                         for event in analytic_events:
