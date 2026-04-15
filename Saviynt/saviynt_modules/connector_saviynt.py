@@ -148,7 +148,7 @@ class SaviyntEventsConnector(Connector):
         # Timer to prevent spamming
         time.sleep(10)
 
-    def _fetch_analytic_events(self, analytic: str) -> None:
+    def _fetch_analytic_events(self, analytic: str) -> list[dict[str, Any]]:
         """
         Successively queries the pages while more are available for one report/analytic
 
@@ -209,8 +209,8 @@ class SaviyntEventsConnector(Connector):
                         if event not in analytic_events:
                             analytic_events.append(event)
                     # Offset pages handling
-                    offset += 1
-                    if total > offset * self.limit:
+                    offset += self.limit
+                    if total > offset:
                         events_to_fetch = True
                     else:
                         events_to_fetch = False
@@ -226,7 +226,7 @@ class SaviyntEventsConnector(Connector):
             ]
             return filtered_events
         else:
-            return None
+            return []
 
     def run(self) -> None:  # pragma: no cover
         """
@@ -239,7 +239,7 @@ class SaviyntEventsConnector(Connector):
                 try:
                     analytic_events = self._fetch_analytic_events(analytic)
                     # If any events fetched
-                    if analytic_events != None and len(analytic_events) > 0:
+                    if len(analytic_events) > 0:
                         # Store the last event id in persistent storage
                         last_event_id = analytic_events[-1].get("ID")
                         self.update_analytic_last_event(last_event_id, analytic)
@@ -267,3 +267,4 @@ class SaviyntEventsConnector(Connector):
                     raise
             self.log(message=f"Sleeping until next batch in {self.configuration.frequency} minutes", level="info")
             time.sleep(self.configuration.frequency * 60)
+            
