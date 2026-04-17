@@ -31,8 +31,8 @@ warn_return_any = true
 exclude = ["tests/*"]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
-sekoia-automation-sdk = "^1.17.1"
+python = ">=3.11,<3.12"
+sekoia-automation-sdk = "^1.22.3"
 python-dateutil = "^2.8"
 requests = "^2.31.0"
 requests-ratelimiter = "^0.7.0"
